@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test Pattern</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+  }
+
+  /* Controls: top left, inside the left 25% so they never touch the table. */
+  #controls {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    max-width: calc(25% - 16px);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 14px;
+  }
+  .control { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .control span { min-width: 3.5em; }
+  .control button {
+    width: 28px;
+    height: 28px;
+    background: #222;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 4px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .control button:hover { background: #333; }
+
+  /* Table: center 50% of the width, full height. */
+  #pattern {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 25%;
+    width: 50%;
+    display: flex;
+  }
+  .bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .header {
+    background: #000;
+    padding: 6px 2px;
+    display: flex;
+    justify-content: center;
+  }
+  .header input {
+    width: 100%;
+    max-width: 5em;
+    background: #000;
+    color: #fff;
+    border: none;
+    text-align: center;
+    font-size: 16px;
+    font-family: inherit;
+    -moz-appearance: textfield;
+  }
+  .header input::-webkit-outer-spin-button,
+  .header input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .cell {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-height: 0;
+  }
+  .cell input {
+    width: 100%;
+    background: transparent;
+    color: inherit;
+    border: none;
+    outline: none;
+    text-align: center;
+    font-size: 16px;
+    font-family: inherit;
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <div class="control"><span>Bars</span><button id="barMinus" aria-label="Remove bar">−</button><button id="barPlus" aria-label="Add bar">+</button></div>
+  <div class="control"><span>Rows</span><button id="rowMinus" aria-label="Remove row">−</button><button id="rowPlus" aria-label="Add row">+</button></div>
+</div>
+<div id="pattern"></div>
+
+<script>
+  const STORAGE_KEY = 'testpattern.v1';
+  const NEW_BAR_LEVEL = 51;
+
+  function defaultState() {
+    return {
+      levels: [51, 102, 153, 204, 255],
+      rows: 3,
+      // text[bar][row]
+      text: [[], [], [], [], []]
+    };
+  }
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (s && Array.isArray(s.levels) && s.levels.length > 0 && s.rows > 0 && Array.isArray(s.text)) return s;
+    } catch (e) {}
+    return defaultState();
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  let state = load();
+  const pattern = document.getElementById('pattern');
+
+  function clampLevel(v) {
+    v = Math.round(Number(v));
+    if (!Number.isFinite(v)) return 0;
+    return Math.min(255, Math.max(0, v));
+  }
+
+  function textColor(level) {
+    return level < 128 ? '#fff' : '#000';
+  }
+
+  function render() {
+    pattern.innerHTML = '';
+    state.levels.forEach((level, b) => {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+
+      const header = document.createElement('div');
+      header.className = 'header';
+      const num = document.createElement('input');
+      num.type = 'number';
+      num.min = 0;
+      num.max = 255;
+      num.value = level;
+      num.setAttribute('aria-label', 'Grey level of bar ' + (b + 1));
+      header.appendChild(num);
+      bar.appendChild(header);
+
+      const body = document.createElement('div');
+      body.style.flex = '1';
+      body.style.display = 'flex';
+      body.style.flexDirection = 'column';
+
+      function paint() {
+        const l = state.levels[b];
+        body.style.background = `rgb(${l},${l},${l})`;
+        body.style.color = textColor(l);
+      }
+
+      num.addEventListener('input', () => {
+        if (num.value === '') return;
+        state.levels[b] = clampLevel(num.value);
+        paint();
+        save();
+      });
+      num.addEventListener('change', () => {
+        state.levels[b] = clampLevel(num.value);
+        num.value = state.levels[b];
+        paint();
+        save();
+      });
+
+      if (!state.text[b]) state.text[b] = [];
+      for (let r = 0; r < state.rows; r++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = state.text[b][r] || '';
+        input.setAttribute('aria-label', 'Bar ' + (b + 1) + ', row ' + (r + 1));
+        input.addEventListener('input', () => {
+          state.text[b][r] = input.value;
+          save();
+        });
+        cell.appendChild(input);
+        body.appendChild(cell);
+      }
+
+      paint();
+      bar.appendChild(body);
+      pattern.appendChild(bar);
+    });
+  }
+
+  document.getElementById('barPlus').addEventListener('click', () => {
+    state.levels.push(NEW_BAR_LEVEL);
+    state.text.push([]);
+    save();
+    render();
+  });
+  document.getElementById('barMinus').addEventListener('click', () => {
+    if (state.levels.length <= 1) return;
+    state.levels.pop();
+    state.text.pop();
+    save();
+    render();
+  });
+  document.getElementById('rowPlus').addEventListener('click', () => {
+    state.rows++;
+    save();
+    render();
+  });
+  document.getElementById('rowMinus').addEventListener('click', () => {
+    if (state.rows <= 1) return;
+    state.rows--;
+    state.text.forEach(t => { t.length = Math.min(t.length, state.rows); });
+    save();
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>
